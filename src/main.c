@@ -27,6 +27,7 @@
 #define USB_PORT (0)
 #define BUFFER_MAX_SIZE (256)
 #define IMAGE_SIZE (352*288*2)
+#define CHUNK_SIZE (200)
 
 #define OV_CAPTURE_STR "OV+CAPTURE?"
 #define OV_WRITE_STR "OV+WRITE="
@@ -136,7 +137,7 @@ static void core1_entry(void) {
                     rx_msg.p_data = p_data;
                     rx_msg.len = len;
                     queue_try_add(&_rx_queue, &rx_msg);
-                    printf("added a ov request message\n");
+                    printf("added a request message\n");
                 }
             }
         }
@@ -204,6 +205,7 @@ static ov_msg_t ov_msg_parse(uint8_t *p_data, uint32_t len) {
             printf("%s: error format\n", __func__);
             return msg;
         }
+
         msg.reg = atoi(ptr);
 
         printf("%s read at reg 0x%x\n", __func__, msg.reg);
@@ -220,23 +222,25 @@ static void event_worker(uint8_t *p_data, uint32_t len) {
     switch (msg.cmd) {
         case OV_CAPTURE: {
             printf("%s: Capturing ...\n", __func__);
-            ov2640_capture_frame(&_config);
+            // ov2640_capture_frame(&_config);
 
-            uint16_t offset = 0;
-            uint16_t length = _config.image_buf_size;
+            uint32_t offset = 0;
+            uint32_t length = _config.image_buf_size;
             bool result = true;
 
             // Send message confirm to host that we have file
-            usb0_sendto_host("+IMAGE=okay\n", strlen("+IMAGE=okay\n"));
+            usb_sendto_host("+IMAGE=okay\n", strlen("+IMAGE=okay\n"));
             sleep_ms(20);
 
-            // This will chop the request into 200 byte writes
+            // This will chop the request into CHUNK_SIZE byte writes
             while (result == true && length > offset) {
-                if (length - offset >= 200) {
-                    result = usb_sendto_host(&_config.image_buf[offset], 200);
-                    offset += 200;
+                if (length - offset >= CHUNK_SIZE) {
+                    result = usb_sendto_host(&image_buf[offset], CHUNK_SIZE);
+                    offset += CHUNK_SIZE;
+                    printf("chunk sent, offset %d\n", offset);
                 } else {
-                    result = usb_sendto_host(&_config.image_buf[offset], length - offset);
+                    printf("remain size %d\n", length - offset);
+                    result = usb_sendto_host(&image_buf[offset], length - offset);
                     offset = length;
                 }
 
@@ -244,7 +248,7 @@ static void event_worker(uint8_t *p_data, uint32_t len) {
                 sleep_ms(50);
             }
 
-            printf("%s: sent %d bytes done\n", __func__, _config.image_buf_size);
+            printf("%s: sent %d bytes, offset %d\n", __func__, _config.image_buf_size, offset);
             break;
         }
 

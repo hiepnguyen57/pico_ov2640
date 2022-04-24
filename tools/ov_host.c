@@ -61,7 +61,7 @@ int modem_transfer(int fd, char *cmd) {
             total_bytes += nbytes;
             printf("Received %d bytes\n", total_bytes);
 
-            if (total_bytes == IMAGE_SIZE - 1 || total_bytes == IMAGE_SIZE) {
+            if (total_bytes >= IMAGE_SIZE) {
                 // Create and save file
                 now = time(NULL);
                 sprintf(file_name, "image_%d.bin", (int)now);
