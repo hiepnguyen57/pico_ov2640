@@ -226,6 +226,10 @@ static void event_worker(uint8_t *p_data, uint32_t len) {
             uint16_t length = _config.image_buf_size;
             bool result = true;
 
+            // Send message confirm to host that we have file
+            usb0_sendto_host("+IMAGE=okay\n", strlen("+IMAGE=okay\n"));
+            sleep_ms(20);
+
             // This will chop the request into 200 byte writes
             while (result == true && length > offset) {
                 if (length - offset >= 200) {
