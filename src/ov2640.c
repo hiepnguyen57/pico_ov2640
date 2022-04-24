@@ -80,7 +80,9 @@ bool ov2640_reg_write(struct ov2640_config *config, uint8_t reg, uint8_t value) 
 }
 
 uint8_t ov2640_reg_read(struct ov2640_config *config, uint8_t reg) {
-	i2c_write_blocking(config->sccb, OV2640_ADDR, &reg, 1, false);
+    if (i2c_write_blocking(config->sccb, OV2640_ADDR, &reg, 1, false) < 1) {
+        printf("%s: failed to write\n", __func__);
+    }
 
 	uint8_t value;
 	i2c_read_blocking(config->sccb, OV2640_ADDR, &value, 1, false);

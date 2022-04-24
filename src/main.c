@@ -26,6 +26,7 @@
 
 #define USB_PORT (0)
 #define BUFFER_MAX_SIZE (256)
+#define IMAGE_SIZE (352*288*2)
 
 #define OV_CAPTURE_STR "OV+CAPTURE?"
 #define OV_WRITE_STR "OV+WRITE="
@@ -62,7 +63,7 @@ static const uint8_t CMD_REG_WRITE = 0xAA;
 static const uint8_t CMD_REG_READ = 0xBB;
 static const uint8_t CMD_CAPTURE = 0xCC;
 
-static uint8_t image_buf[352*288*2];
+static uint8_t image_buf[IMAGE_SIZE];
 
 static queue_t _rx_queue;
 static mutex_t _mtx;
