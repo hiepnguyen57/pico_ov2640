@@ -222,7 +222,7 @@ static void event_worker(uint8_t *p_data, uint32_t len) {
     switch (msg.cmd) {
         case OV_CAPTURE: {
             printf("%s: Capturing ...\n", __func__);
-            // ov2640_capture_frame(&_config);
+            ov2640_capture_frame(&_config);
 
             uint32_t offset = 0;
             uint32_t length = _config.image_buf_size;
@@ -235,12 +235,12 @@ static void event_worker(uint8_t *p_data, uint32_t len) {
             // This will chop the request into CHUNK_SIZE byte writes
             while (result == true && length > offset) {
                 if (length - offset >= CHUNK_SIZE) {
-                    result = usb_sendto_host(&image_buf[offset], CHUNK_SIZE);
+                    result = usb_sendto_host(&_config.image_buf[offset], CHUNK_SIZE);
                     offset += CHUNK_SIZE;
                     printf("chunk sent, offset %d\n", offset);
                 } else {
                     printf("remain size %d\n", length - offset);
-                    result = usb_sendto_host(&image_buf[offset], length - offset);
+                    result = usb_sendto_host(&_config.image_buf[offset], length - offset);
                     offset = length;
                 }
 

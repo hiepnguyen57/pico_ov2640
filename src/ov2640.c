@@ -10,6 +10,8 @@
 static const uint8_t OV2640_ADDR = 0x60 >> 1;
 
 void ov2640_init(struct ov2640_config *config) {
+	printf("%s enter\n", __func__);
+	
 	// XCLK generation (~20.83 MHz)
 	gpio_set_function(config->pin_xclk, GPIO_FUNC_PWM);
 	uint slice_num = pwm_gpio_to_slice_num(config->pin_xclk);
@@ -17,21 +19,24 @@ void ov2640_init(struct ov2640_config *config) {
 	pwm_set_wrap(slice_num, 5);
 	pwm_set_gpio_level(config->pin_xclk, 3);
 	pwm_set_enabled(slice_num, true);
+	printf("%s pwm init\n", __func__);
 
 	// SCCB I2C @ 100 kHz
 	gpio_set_function(config->pin_sioc, GPIO_FUNC_I2C);
 	gpio_set_function(config->pin_siod, GPIO_FUNC_I2C);
 	i2c_init(config->sccb, 100 * 1000);
+	printf("%s i2c init\n", __func__);
 
 	// Initialise reset pin
 	gpio_init(config->pin_resetb);
 	gpio_set_dir(config->pin_resetb, GPIO_OUT);
-
+	
 	// Reset camera, and give it some time to wake back up
 	gpio_put(config->pin_resetb, 0);
 	sleep_ms(100);
 	gpio_put(config->pin_resetb, 1);
 	sleep_ms(100);
+	printf("%s reset camera\n", __func__);
 
 	// Initialise the camera itself over SCCB
 	ov2640_regs_write(config, ov2640_vga);
@@ -40,10 +45,12 @@ void ov2640_init(struct ov2640_config *config) {
 	// Set RGB565 output mode
 	ov2640_reg_write(config, 0xff, 0x00);
 	ov2640_reg_write(config, 0xDA, (ov2640_reg_read(config, 0xDA) & 0xC) | 0x8);
+	printf("%s config camera\n", __func__);
 
 	// Enable image RX PIO
 	uint offset = pio_add_program(config->pio, &image_program);
 	image_program_init(config->pio, config->pio_sm, offset, config->pin_y2_pio_base);
+	printf("%s exit\n", __func__);
 }
 
 void ov2640_capture_frame(struct ov2640_config *config) {
@@ -72,6 +79,7 @@ void ov2640_capture_frame(struct ov2640_config *config) {
 bool ov2640_reg_write(struct ov2640_config *config, uint8_t reg, uint8_t value) {
     uint8_t data[] = {reg, value};
     if (i2c_write_blocking(config->sccb, OV2640_ADDR, data, sizeof(data), false) > 0) {
+		printf("%s success\n", __func__);
         return true;
     } else {
         printf("%s: failed to write\n", __func__);
@@ -101,5 +109,6 @@ void ov2640_regs_write(struct ov2640_config *config, const uint8_t (*regs_list)[
 
 		ov2640_reg_write(config, reg, value);
 		regs_list++;
+		printf("write here\n");
 	}
 }
