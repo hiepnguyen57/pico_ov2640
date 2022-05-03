@@ -23,11 +23,8 @@
 #include <inttypes.h>
 
 #include "ov2640.h"
-
-#define USB_PORT (0)
-#define BUFFER_MAX_SIZE (256)
-#define IMAGE_SIZE (352*288*2)
-#define CHUNK_SIZE (200)
+#include "log.h"
+#include "usb_itf.h"
 
 #define OV_CAPTURE_STR "OV+CAPTURE?"
 #define OV_WRITE_STR "OV+WRITE="
@@ -53,80 +50,37 @@ typedef struct {
     uint32_t len;
 } rx_msg_t;
 
-static const int PIN_CAM_SIOC = 5; // I2C0 SCL
-static const int PIN_CAM_SIOD = 4; // I2C0 SDA
-static const int PIN_CAM_RESETB = 2;
-static const int PIN_CAM_XCLK = 3;
-static const int PIN_CAM_VSYNC = 16;
-static const int PIN_CAM_Y2_PIO_BASE = 6;
-
-static const uint8_t CMD_REG_WRITE = 0xAA;
-static const uint8_t CMD_REG_READ = 0xBB;
-static const uint8_t CMD_CAPTURE = 0xCC;
-
 static uint8_t image_buf[IMAGE_SIZE];
 
-static queue_t _rx_queue;
-static mutex_t _mtx;
-static mutex_t t_mtx;
+static queue_t msg_rx_q;
+static mutex_t tx_mtx;
 
-struct ov2640_config _config;
-
-static uint32_t usb_cdc_read_msg(uint8_t itf, uint8_t *p_buf, const uint32_t len) {
-    uint32_t bytes_read = 0;
-    mutex_enter_blocking(&_mtx);
-
-    if (tud_cdc_n_available(itf)) {
-        bytes_read = tud_cdc_n_read(itf, p_buf, len);
-        tud_cdc_n_read_flush(itf);
-    }
-
-    mutex_exit(&_mtx);
-    return bytes_read;
-}
-
-static uint32_t usb_cdc_write_msg(uint8_t itf, const uint8_t *p_data, const uint32_t len) {
-    uint32_t bytes_write = 0;
-    mutex_enter_blocking(&_mtx);
-
-    bytes_write = tud_cdc_n_write(itf, p_data, len);
-    if (bytes_write) {
-        tud_cdc_n_write_flush(itf);
-    }
-
-    mutex_exit(&_mtx);
-    return bytes_write;
-}
-
-bool usb_sendto_host(const uint8_t *p_data, uint16_t len) {
-    bool result = false;
-    uint8_t retry = 3;
-    do {
-        if (len == usb_cdc_write_msg(USB_PORT, p_data, len)) {
-            result = true;
-            break;
-        }
-    } while (retry--);
-
-    return result;
-}
-
-static void tx_done(void) {
-    usb_sendto_host("\r\n", strlen("\r\n"));
-}
+static const struct ov2640_config camera_cfg = {
+    .sccb = I2C_CAM,
+    .pin_sioc = CONFIG_PIN_CAM_SIOC,
+    .pin_siod = CONFIG_PIN_CAM_SIOD,
+    .pin_resetb = CONFIG_PIN_CAM_RESETB,
+    .pin_xclk = CONFIG_PIN_CAM_XCLK,
+    .pin_vsync = CONFIG_PIN_CAM_VSYNC,
+    .pin_y2_pio_base = CONFIG_PIN_CAM_Y2_PIO_BASE,
+    .pio = PIO_CAM,
+    .pio_sm = 0,
+    .dma_channel = 0,
+    .image_buf = image_buf,
+    .image_buf_size = sizeof(image_buf),
+};
 
 static void core1_entry(void) {
-    tusb_init();
-    mutex_init(&_mtx);
-    queue_init(&_rx_queue, sizeof(rx_msg_t), 10);
-    printf("%s: enter\n", __func__);
+    queue_init(&msg_rx_q, sizeof(rx_msg_t), 10);
+    usb_itf_init();
+    log_debug("done\n");
 
     while (1) {
         tud_task();
 
         if (tud_cdc_n_connected(USB_PORT)) {
             uint8_t buffer[BUFFER_MAX_SIZE];
-            uint32_t len = usb_cdc_read_msg(USB_PORT, buffer, BUFFER_MAX_SIZE);
+            uint32_t len = usb_recvfrom_host(buffer, BUFFER_MAX_SIZE);
             if (len) {
                 uint8_t *p_data = (uint8_t *)malloc(len);  // Remember free memory after using
                 if (p_data) {
@@ -136,8 +90,8 @@ static void core1_entry(void) {
                     rx_msg_t rx_msg;
                     rx_msg.p_data = p_data;
                     rx_msg.len = len;
-                    queue_try_add(&_rx_queue, &rx_msg);
-                    printf("added a request message\n");
+                    queue_try_add(&msg_rx_q, &rx_msg);
+                    log_debug("added a request message\n");
                 }
             }
         }
@@ -171,7 +125,7 @@ static ov_msg_t ov_msg_parse(uint8_t *p_data, uint32_t len) {
 
         // Get register
         if (ptr == NULL) {
-            printf("%s: error format\n", __func__);
+            log_error("error format\n");
             return msg;
         }
         msg.reg = atoi(ptr);
@@ -179,12 +133,12 @@ static ov_msg_t ov_msg_parse(uint8_t *p_data, uint32_t len) {
         // Get value
         ptr = strtok(NULL, delim);
         if (ptr == NULL) {
-            printf("%s: error format\n", __func__);
+            log_error("error format\n");
             return msg;
         }
         msg.val = atoi(ptr);
 
-        printf("%s write at reg 0x%x value 0x%x\n", __func__, msg.reg, msg.val);
+        log_info("write at reg 0x%x value 0x%x\n", msg.reg, msg.val);
         msg.cmd = OV_WRITE;
         return msg;
     }
@@ -202,13 +156,13 @@ static ov_msg_t ov_msg_parse(uint8_t *p_data, uint32_t len) {
 
         // Get register
         if (ptr == NULL) {
-            printf("%s: error format\n", __func__);
+            log_error("error format\n");
             return msg;
         }
 
         msg.reg = atoi(ptr);
 
-        printf("%s read at reg 0x%x\n", __func__, msg.reg);
+        log_info("read at reg 0x%x\n", msg.reg);
         msg.cmd = OV_READ;
         return msg;
     }
@@ -221,11 +175,11 @@ static void event_worker(uint8_t *p_data, uint32_t len) {
 
     switch (msg.cmd) {
         case OV_CAPTURE: {
-            printf("%s: Capturing ...\n", __func__);
-            ov2640_capture_frame(&_config);
+            log_debug("Capturing ...\n");
+            ov2640_capture_frame(&camera_cfg);
 
             uint32_t offset = 0;
-            uint32_t length = _config.image_buf_size;
+            uint32_t length = camera_cfg.image_buf_size;
             bool result = true;
 
             // Send message confirm to host that we have file
@@ -235,12 +189,12 @@ static void event_worker(uint8_t *p_data, uint32_t len) {
             // This will chop the request into CHUNK_SIZE byte writes
             while (result == true && length > offset) {
                 if (length - offset >= CHUNK_SIZE) {
-                    result = usb_sendto_host(&_config.image_buf[offset], CHUNK_SIZE);
+                    result = usb_sendto_host(&camera_cfg.image_buf[offset], CHUNK_SIZE);
                     offset += CHUNK_SIZE;
                     printf("chunk sent, offset %d\n", offset);
                 } else {
                     printf("remain size %d\n", length - offset);
-                    result = usb_sendto_host(&_config.image_buf[offset], length - offset);
+                    result = usb_sendto_host(&camera_cfg.image_buf[offset], length - offset);
                     offset = length;
                 }
 
@@ -248,19 +202,19 @@ static void event_worker(uint8_t *p_data, uint32_t len) {
                 sleep_ms(50);
             }
 
-            printf("%s: sent %d bytes, offset %d\n", __func__, _config.image_buf_size, offset);
+            log_debug("sent %d bytes, offset %d\n", camera_cfg.image_buf_size, offset);
             break;
         }
 
         case OV_WRITE: {
-            printf("%s: Write at reg 0x%x value 0x%x\n", __func__, msg.reg, msg.val);
-            ov2640_reg_write(&_config, msg.reg, msg.val);
+            log_debug("Write at reg 0x%x value 0x%x\n", msg.reg, msg.val);
+            ov2640_raw_write(&camera_cfg, msg.reg, msg.val);
             break;
         }
 
         case OV_READ: {
-            uint8_t value = ov2640_reg_read(&_config, msg.reg);
-            printf("%s: Read at reg 0x%x value 0x%x\n", __func__, msg.reg, value);
+            uint8_t value = ov2640_raw_read(&camera_cfg, msg.reg);
+            log_debug("Read at reg 0x%x value 0x%x\n", msg.reg, value);
             usb_sendto_host(&value, 1);
             break;
         }
@@ -275,40 +229,23 @@ static void event_worker(uint8_t *p_data, uint32_t len) {
 
 int main(void) {
     stdio_init_all();
+    mutex_init(&tx_mtx);
     multicore_launch_core1(core1_entry);
-    mutex_init(&t_mtx);
 
-    _config.sccb = i2c0;
-    _config.pin_sioc = PIN_CAM_SIOC;
-    _config.pin_siod = PIN_CAM_SIOD;
+    ov2640_init(&camera_cfg);
+    ov2640_raw_write(&camera_cfg, 0xff, 0x01);
+    uint8_t midh = ov2640_raw_read(&camera_cfg, 0x1C);
+    uint8_t midl = ov2640_raw_read(&camera_cfg, 0x1D);
 
-    _config.pin_resetb = PIN_CAM_RESETB;
-    _config.pin_xclk = PIN_CAM_XCLK;
-    _config.pin_vsync = PIN_CAM_VSYNC;
-    _config.pin_y2_pio_base = PIN_CAM_Y2_PIO_BASE;
-
-    _config.pio = pio0;
-    _config.pio_sm = 0;
-
-    _config.dma_channel = 0;
-    _config.image_buf = image_buf;
-    _config.image_buf_size = sizeof(image_buf);
-
-    ov2640_init(&_config);
-
-    ov2640_reg_write(&_config, 0xff, 0x01);
-    uint8_t midh = ov2640_reg_read(&_config, 0x1C);
-    uint8_t midl = ov2640_reg_read(&_config, 0x1D);
-
-    printf("MIDH = 0x%02x, MIDL = 0x%02x\n", midh, midl);
+    log_info("MIDH = 0x%02x, MIDL = 0x%02x\n", midh, midl);
 
     while (1) {
         rx_msg_t msg;
-        if (queue_try_remove(&_rx_queue, &msg) && msg.p_data != NULL) {
-            mutex_enter_blocking(&t_mtx);
+        if (queue_try_remove(&msg_rx_q, &msg) && msg.p_data != NULL) {
+            mutex_enter_blocking(&tx_mtx);
             event_worker(msg.p_data, msg.len);
             free(msg.p_data);
-            mutex_exit(&t_mtx);
+            mutex_exit(&tx_mtx);
         }
     }
 
