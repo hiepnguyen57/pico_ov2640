@@ -1,5 +1,5 @@
 /**
- * @file ov_host.c
+ * @file get_image.c
  * @author Hiep Nguyen (hoahiepk10@gmail.com)
  * @brief 
  * @version 0.1
@@ -22,7 +22,7 @@
 #define NORMAL_CMD (32)
 
 //
-// gcc ov_host.c -o ov_host
+// gcc get_image.c -o get_image
 //
 int modem_transfer(int fd, char *cmd) {
     char buffer[IMAGE_SIZE + 1] = {0};
@@ -40,49 +40,32 @@ int modem_transfer(int fd, char *cmd) {
         return -1;
     }
 
-    // Wait for result
-    bufptr = ack;
-    while ((nbytes = read(fd, bufptr, ack + sizeof(ack) - bufptr - 1)) > 0) {
+    // wait for result
+    bufptr = buffer;
+    total_bytes = 0;
+    while ((nbytes = read(fd, bufptr, buffer + sizeof(buffer) - bufptr - 1)) > 0) {
         bufptr += nbytes;
-        if (bufptr[-1] == '\n' || bufptr[-1] == '\r') {
+        total_bytes += nbytes;
+        printf("Received %d bytes\n", total_bytes);
+
+        if (total_bytes >= IMAGE_SIZE) {
+            // Create and save file
+            now = time(NULL);
+            sprintf(file_name, "image_%d.bin", (int)now);
+            fh = fopen(file_name, "wb");
+            if (fh == NULL) {
+                printf("Unable to create file.\n");
+                exit(EXIT_FAILURE);
+            }
+
+            fwrite(buffer, total_bytes, 1, fh);
+            fclose(fh);
+
+            printf("\n");
+            printf("\n=========== IMAGE FILE ==============\n");
+            printf("File %s has created successfully. File size: %d\n", file_name, total_bytes);
             break;
         }
-    }
-
-    // Verify result
-    if (strcmp(ack, "+IMAGE=okay\n") == 0) {
-        printf("\n=========== STARTING ==============\n");
-
-        // wait for result
-        bufptr = buffer;
-        total_bytes = 0;
-        while ((nbytes = read(fd, bufptr, buffer + sizeof(buffer) - bufptr - 1)) > 0) {
-            bufptr += nbytes;
-            total_bytes += nbytes;
-            printf("Received %d bytes\n", total_bytes);
-
-            if (total_bytes >= IMAGE_SIZE) {
-                // Create and save file
-                now = time(NULL);
-                sprintf(file_name, "image_%d.bin", (int)now);
-                fh = fopen(file_name, "wb");
-                if (fh == NULL) {
-                    printf("Unable to create file.\n");
-                    exit(EXIT_FAILURE);
-                }
-
-                fwrite(buffer, total_bytes, 1, fh);
-                fclose(fh);
-
-                printf("\n");
-                printf("\n=========== IMAGE FILE ==============\n");
-                printf("File %s has created successfully. File size: %d\n", file_name, total_bytes);
-                break;
-            }
-        }
-    } else {
-        printf("value=%s\n", ack);
-        return 0;
     }
 
     return 0;
@@ -165,7 +148,7 @@ int main(int argc, char *argv[]) {
     printf("\n");
 
     // send at command
-    modem_transfer(fd, cmd);
+    modem_transfer(fd, "OV+CAPTURE?");
 
     return 0;
 }

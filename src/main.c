@@ -182,10 +182,6 @@ static void event_worker(uint8_t *p_data, uint32_t len) {
             uint32_t length = camera_cfg.image_buf_size;
             bool result = true;
 
-            // Send message confirm to host that we have file
-            usb_sendto_host("+IMAGE=okay\n", strlen("+IMAGE=okay\n"));
-            sleep_ms(20);
-
             // This will chop the request into CHUNK_SIZE byte writes
             while (result == true && length > offset) {
                 if (length - offset >= CHUNK_SIZE) {
@@ -199,7 +195,7 @@ static void event_worker(uint8_t *p_data, uint32_t len) {
                 }
 
                 // Take a rest
-                sleep_ms(50);
+                sleep_ms(10);
             }
 
             log_debug("sent %d bytes, offset %d\n", camera_cfg.image_buf_size, offset);
@@ -222,9 +218,6 @@ static void event_worker(uint8_t *p_data, uint32_t len) {
         default:
             break;
     }
-
-    // transfer done
-    tx_done();
 };
 
 int main(void) {

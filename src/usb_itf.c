@@ -25,7 +25,6 @@ void usb_itf_init(void) {
     mutex_init(&_mtx);
 }
 
-
 bool usb_sendto_host(const uint8_t *p_data, uint16_t len) {
     bool result = false;
     uint8_t retry = 3;
@@ -41,11 +40,6 @@ bool usb_sendto_host(const uint8_t *p_data, uint16_t len) {
 
 uint32_t usb_recvfrom_host(uint8_t *p_data, uint32_t len) {
     return usb_cdc_read_msg(USB_PORT, p_data, len);
-}
-
-
-void tx_done(void) {
-    usb_sendto_host("\r\n", strlen("\r\n"));
 }
 
 static uint32_t usb_cdc_read_msg(uint8_t itf, uint8_t *p_buf, const uint32_t len) {
