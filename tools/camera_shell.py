@@ -91,6 +91,7 @@ def capture(filename):
             b = math.floor(b / 0x1f * 0xff)
             data[x, y] = (r, g, b)
 
+    img.show()
     img.save(filename)
 
 
