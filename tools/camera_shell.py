@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import atexit
 import IPython
 import math
@@ -22,7 +24,7 @@ def _raw_write(reg, val):
     assert isinstance(val, int)
     assert 0x00 <= val <= 0xFF
 
-    ser.write(struct.pack('OV+WRITE=', reg, ',', val))
+    ser.write(struct.pack('!9BB1BB', *b'OV+WRITE=', reg, *b',', val))
 
 
 def _raw_read(reg):
@@ -31,7 +33,7 @@ def _raw_read(reg):
     assert isinstance(reg, int)
     assert 0x00 <= reg <= 0xFF
 
-    ser.write(struct.pack('OV+READ=', reg))
+    ser.write(struct.pack('!8BB', *b'OV+READ=', reg))
     return ser.read(1)[0]
 
 
@@ -70,7 +72,7 @@ def set_vflip(vflip):
 def capture(filename):
     ser.reset_input_buffer
     ser.reset_output_buffer
-    ser.write(struct.pack('OV+CAPTURE?'))
+    ser.write(struct.pack('!11B', *b'OV+CAPTURE?'))
 
     raw = ser.read(352*288*2)
     img = Image.new('RGB', (352, 288))

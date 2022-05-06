@@ -50,7 +50,7 @@ typedef struct {
     uint32_t len;
 } rx_msg_t;
 
-static uint8_t image_buf[IMAGE_SIZE];
+uint8_t image_buf[IMAGE_SIZE];
 
 static queue_t msg_rx_q;
 static mutex_t tx_mtx;
@@ -67,7 +67,7 @@ static const struct ov2640_config camera_cfg = {
     .pio_sm = 0,
     .dma_channel = 0,
     .image_buf = image_buf,
-    .image_buf_size = sizeof(image_buf),
+    .image_buf_size = IMAGE_SIZE,
 };
 
 static void core1_entry(void) {
@@ -187,18 +187,18 @@ static void event_worker(uint8_t *p_data, uint32_t len) {
                 if (length - offset >= CHUNK_SIZE) {
                     result = usb_sendto_host(&camera_cfg.image_buf[offset], CHUNK_SIZE);
                     offset += CHUNK_SIZE;
-                    printf("chunk sent, offset %d\n", offset);
+                    log_debug("chunk sent, offset %d\n", offset);
                 } else {
-                    printf("remain size %d\n", length - offset);
                     result = usb_sendto_host(&camera_cfg.image_buf[offset], length - offset);
                     offset = length;
+                    log_debug("last chunk, offset %d\n", offset);
                 }
 
                 // Take a rest
-                sleep_ms(10);
+                sleep_ms(1);
             }
 
-            log_debug("sent %d bytes, offset %d\n", camera_cfg.image_buf_size, offset);
+            log_debug("sent %d bytes\n", offset);
             break;
         }
 

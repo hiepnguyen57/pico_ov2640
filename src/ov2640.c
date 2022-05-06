@@ -54,7 +54,7 @@ void ov2640_capture_frame(const struct ov2640_config *config) {
 	channel_config_set_write_increment(&c, true);
 	channel_config_set_dreq(&c, pio_get_dreq(config->pio, config->pio_sm, false));
 	channel_config_set_transfer_data_size(&c, DMA_SIZE_8);
-	
+	    
 	dma_channel_configure(
 		config->dma_channel, &c,
 		config->image_buf,
@@ -74,7 +74,6 @@ void ov2640_capture_frame(const struct ov2640_config *config) {
 bool ov2640_raw_write(const struct ov2640_config *config, uint8_t reg, uint8_t value) {
     uint8_t data[] = {reg, value};
     if (i2c_write_blocking(config->sccb, OV2640_ADDR, data, sizeof(data), false) > 0) {
-		log_debug("success\n");
         return true;
     } else {
         log_error("failed to write");
