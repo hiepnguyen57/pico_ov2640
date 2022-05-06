@@ -227,9 +227,9 @@ int main(void) {
 
     ov2640_init(&camera_cfg);
     ov2640_raw_write(&camera_cfg, 0xff, 0x01);
+
     uint8_t midh = ov2640_raw_read(&camera_cfg, 0x1C);
     uint8_t midl = ov2640_raw_read(&camera_cfg, 0x1D);
-
     log_info("MIDH = 0x%02x, MIDL = 0x%02x\n", midh, midl);
 
     while (1) {
